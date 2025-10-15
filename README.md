@@ -1,63 +1,118 @@
-# 🚀 Sistema de Pedidos con Microservicios Desacoplados via RabbitMQ
+# Sistema de Pedidos - Microservicios con RabbitMQ
 
-**PROYECTO**: Sistema de Pedidos con Microservicios Desacoplados via RabbitMQ
+Sistema de gestión de pedidos usando arquitectura de microservicios desacoplados mediante mensajería asíncrona (RabbitMQ).
 
-## 🚂 Desplegar en Railway (1-Click)
+## Descripción
 
-### ⚡ Deploy Automático con Template
+Aplicación que permite gestionar pedidos a través de dos microservicios independientes:
 
-¡La forma MÁS FÁCIL de desplegar este proyecto!
+- **Orders Service**: API REST para crear y consultar pedidos (FastAPI + MongoDB)
+- **Notifications Service**: Consumidor que procesa notificaciones de pedidos desde RabbitMQ
 
-```
-https://railway.com/new/template/_o12zG
-```
+## Tecnologías
 
-**Pasos:**
-1. Click en el link del template
-2. Conecta tu cuenta de GitHub
-3. Railway desplegará automáticamente:
-   - ✅ Orders Service (API REST)
-   - ✅ Notifications Service (Consumer)
-   - ✅ MongoDB
-   - ✅ RabbitMQ interno
-   - ✅ Variables de entorno configuradas
-4. En 2-3 minutos tendrás tu API funcionando en la nube
+- Python 3.11
+- FastAPI
+- MongoDB
+- RabbitMQ (Pika)
+- Docker
+- Railway (deployment)
 
-**URLs después del deploy:**
-- 📡 API REST: `https://tu-orders-service.up.railway.app`
-- 📚 Swagger: `https://tu-orders-service.up.railway.app/docs`
+## Características
 
----
+### Orders Service (API REST)
+- Crear pedidos (POST)
+- Listar pedidos (GET)
+- Obtener pedido por ID (GET)
+- Actualizar estado de pedido (PATCH)
+- Validación de datos con Pydantic
+- Documentación automática (Swagger)
+- Publicación de eventos a RabbitMQ
 
-## 🎯 ARQUITECTURA
-
-Dos microservicios independientes que se comunican mediante mensajería asíncrona:
-
-### 1. 📊 ORDERS SERVICE (Productor):
-- API REST para crear pedidos
-- Persiste en MongoDB
-- Publica eventos a RabbitMQ
-
-### 2. 🔔 NOTIFICATIONS SERVICE (Consumidor):
-- Escucha cola RabbitMQ continuamente
-- Procesa mensajes asincrónicamente
-- **✨ EXTRA**: Actualiza estado del pedido vía API
-- Sin exposición HTTP (solo consumer)
+### Notifications Service (Consumer)
+- Consumo de mensajes desde RabbitMQ
+- Procesamiento asíncrono de notificaciones
+- Reconexión automática en caso de fallo
+- Logs de pedidos procesados
 
 ## 🏗️ Flujo Completo con Confirmación
 
+## Flujo de Trabajo
+
 ```
-┌─────────────────┐    RabbitMQ     ┌──────────────────────┐
-│  Orders Service │ ───────────────▶│ Notifications Service│
-│   (Producer)    │   orders_queue  │     (Consumer)       │
-│                 │                 │                      │
-│ 1. Crear pedido │                 │ 3. Procesar mensaje  │
-│ 2. Publicar     │                 │ 4. Esperar 4s ⏰     │
-│    evento       │                 │ 5. Llamar API ───────┐
-│                 │ ◀───────────────│    PATCH /status     │
-│ 6. Actualizar   │  HTTP Request   │ 6. Confirmar ✅      │
-│    a "notified" │                 │                      │
-└─────────────────┘                 └──────────────────────┘
+Cliente → POST /orders → Orders Service → MongoDB (guardar)
+                                        → RabbitMQ (publicar)
+                                        
+RabbitMQ → Notifications Service → Procesar notificación
+                                 → Log de confirmación
+```
+
+## Estructura del Proyecto
+
+```
+/orders_service/
+├── main.py
+├── routes/
+│   └── orders.py
+├── config/
+│   ├── database.py
+│   └── rabbit.py
+├── models/
+│   ├── order.py
+│   └── responses.py
+├── Dockerfile
+└── requirements.txt
+
+/notifications_service/
+├── consumer.py
+├── Dockerfile
+└── requirements.txt
+
+/
+├── docker-compose.yml
+└── .env
+```
+
+## Instalación y Uso
+
+### Desarrollo Local
+
+1. Clonar el repositorio
+```bash
+git clone <repo-url>
+cd Reto-2
+```
+
+2. Instalar RabbitMQ local (Homebrew en Mac)
+```bash
+brew install rabbitmq
+brew services start rabbitmq
+```
+
+3. Configurar variables de entorno en `.env`
+```bash
+RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672/
+ORDERS_API_URL=http://orders_service:8000
+```
+
+4. Levantar servicios con Docker Compose
+```bash
+docker-compose up -d
+```
+
+5. Probar la API
+```bash
+# Crear un pedido
+curl -X POST "http://localhost:8001/api/orders/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_id": "cliente_123",
+    "products": ["Producto 1", "Producto 2"],
+    "total_amount": 150.00
+  }'
+
+# Ver los logs del notifications service
+docker-compose logs -f notifications_service
 ```
 
 ## 🛠️ STACK TECNOLÓGICO COMÚN
@@ -158,128 +213,103 @@ services:
       - "27017:27017"
 ```
 
-## 📋 FORMATO MENSAJE RABBITMQ
+## Despliegue en Railway
 
-```json
-{
-  "order_id": "507f1f77bcf86cd799439011",
-  "customer_id": "12345",
-  "total_amount": 99.99,
-  "products": ["Producto A", "Producto B"],
-  "timestamp": "2024-01-01T10:30:00Z"
-}
+1. Subir el código a GitHub
+2. Crear servicios en Railway:
+   - MongoDB (desde template de Railway)
+   - RabbitMQ (desde template de Railway)
+   - Orders Service (desde GitHub)
+   - Notifications Service (desde GitHub)
+
+3. Configurar variables de entorno en Railway:
+
+**Para Orders Service:**
+```
+RABBITMQ_URL=amqp://user:pass@rabbitmq.railway.internal:5672
+MONGODB_URL=<railway-mongodb-url>
 ```
 
-## 🌍 VARIABLES ENTORNO
-
-```bash
-# Railway RabbitMQ (funciona local + producción)
-RABBITMQ_URL=amqp://user:pass@switchback.proxy.rlwy.net:34368
-
-# MongoDB
-MONGODB_URL=mongodb://mongodb:27017/ordersdb
-
-# ✨ API Communication (NUEVO)
-ORDERS_API_URL=http://orders_service:8000  # Docker interno
-# ORDERS_API_URL=https://tu-orders.up.railway.app  # Railway
+**Para Notifications Service:**
+```
+RABBITMQ_URL=amqp://user:pass@rabbitmq.railway.internal:5672
 ```
 
-## 📡 API Endpoints
+**Importante:** Usar `rabbitmq.railway.internal` para la comunicación interna entre servicios en Railway.
 
-### 📊 Orders Service
+## API Endpoints
 
-#### 🆕 Crear pedido
+### Crear Pedido
 ```bash
 POST /api/orders/
-Content-Type: application/json
 
 {
   "customer_id": "customer_123",
   "products": ["Laptop", "Mouse", "Teclado"],
   "total_amount": 1299.99
+  "customer_id": "cliente_123",
+  "products": ["Producto 1", "Producto 2"],
+  "total_amount": 150.00
+}
+
+# Respuesta:
+{
+  "success": true,
+  "statusCode": 201,
+  "message": "Pedido creado exitosamente",
+  "data": {
+    "_id": "68ef157f7c92023314c89617",
+    "customer_id": "cliente_123",
+    "products": ["Producto 1", "Producto 2"],
+    "total_amount": 150.00,
+    "status": "pending",
+    "created_at": "2025-10-15T03:31:11.785136"
+  }
 }
 ```
 
-#### 📋 Listar todos los pedidos
+### Listar Pedidos
 ```bash
 GET /api/orders/
 ```
 
-#### 🔍 Obtener pedido específico
+### Obtener Pedido por ID
 ```bash
 GET /api/orders/{order_id}
 ```
 
-#### ✨ Actualizar estado del pedido (NUEVO)
+### Actualizar Estado
 ```bash
 PATCH /api/orders/{order_id}/status?new_status=notified
 ```
 
-**Estados disponibles:**
-- `pending`: Pedido creado, esperando procesamiento
-- `notified`: Notificación enviada y confirmada ✅
-- `processing`: En procesamiento
-- `completed`: Completado
-- `cancelled`: Cancelado
+## Documentación API
 
-## ⚡ Comandos Rápidos (Desarrollo Local)
+La documentación interactiva está disponible en:
+- Swagger UI: `http://localhost:8001/docs`
+- ReDoc: `http://localhost:8001/redoc`
 
-### Inicio Rápido (Railway RabbitMQ)
-```bash
-# 1. Configurar variables de entorno
-export RABBITMQ_URL="amqp://user:pass@switchback.proxy.rlwy.net:34368"
-
-# 2. Levantar servicios
-docker-compose up --build -d
-
-# 3. Ver logs con confirmaciones ✨
-docker-compose logs -f notifications_service | grep -E "(✅|🔄|📞)"
-
-# 4. Abrir API
-open http://localhost:8001/docs
-```
-
-### Demo del Flujo Completo ✨
-```bash
-# 1. Crear un pedido
-curl -X POST "http://localhost:8001/api/orders/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": "demo_123",
-    "products": ["Demo Product"],
-    "total_amount": 29.99
-  }'
-
-# 2. Copiar el order_id de la respuesta
-# 3. Ver estado inicial (debe ser "pending")
-curl "http://localhost:8001/api/orders/{order_id}"
-
-# 4. Esperar 4-5 segundos y consultar de nuevo
-# 5. Ver estado actualizado (debe ser "notified") ✅
-curl "http://localhost:8001/api/orders/{order_id}"
-```
-
-## 🎯 CRITERIOS EVALUACIÓN
-
-- ✅ Comunicación RabbitMQ funcional
-- ✅ Servicios totalmente desacoplados
-- ✅ Manejo de errores en conexiones
-- ✅ Logs claros de flujo completo
-- ✅ Despliegue independiente en Railway
-- ✅ **EXTRA**: Confirmación de notificación con actualización de estado
-- ✅ **EXTRA**: Delay de 4 segundos para verificación visual
-- ✅ **EXTRA**: Comunicación bidireccional (RabbitMQ + HTTP)
-
-## 🔄 Logs Esperados
+## Logs de Ejemplo
 
 ### Orders Service
 ```
-INFO: Pedido creado en MongoDB: 507f1f77bcf86cd799439011
-INFO: 📡 Evento publicado a RabbitMQ exitosamente
+INFO: Pedido creado en MongoDB
+INFO: Evento publicado a RabbitMQ
 ```
 
 ### Notifications Service
 ```
+INFO: Nuevo pedido recibido - ID: 68ef157f7c92023314c89617
+INFO: Cliente: cliente_123 | Productos: Producto 1, Producto 2 | Total: $150.0
+INFO: Notificacion procesada - Pedido 68ef157f7c92023314c89617
+```
+
+## Notas Técnicas
+
+- Los servicios están desacoplados completamente mediante RabbitMQ
+- El notifications service se reconecta automáticamente si RabbitMQ falla
+- Los mensajes se confirman (ACK) solo después de procesarse correctamente
+- Para Railway, usar `rabbitmq.railway.internal` para mejor estabilidad
 ======================================================================
 NUEVO PEDIDO RECIBIDO
 Order ID:     507f1f77bcf86cd799439011
@@ -299,43 +329,10 @@ INFO: 🔄 Mensaje procesado y confirmado (ACK)
 ## 🚀 Deploy en Railway
 
 ### Usando el Template (Recomendado)
-1. Ve a: `https://railway.com/new/template/_o12zG`
-2. Conecta GitHub
-3. ¡Listo! 🎉
+## Autor
 
-### Deploy Manual
-```bash
-# 1. Subir a GitHub
-git add .
-git commit -m "feat: sistema completo con confirmación de notificaciones"
-git push origin main
+Valentín Pico
 
-# 2. En Railway:
-# - New Project → GitHub Repo
-# - Agregar servicios: orders_service, notifications_service
-# - MongoDB: Add → Database → MongoDB
-# - RabbitMQ: Add → Database → RabbitMQ
-```
+## Repositorio
 
----
-
-## 💡 Características Destacadas
-
-### 🔄 **Comunicación Bidireccional**
-- **RabbitMQ**: Orders → Notifications (async)
-- **HTTP REST**: Notifications → Orders (sync)
-
-### ⏰ **Timing Perfecto**
-- 4 segundos de delay para verificación visual
-- Logs claros con emojis para seguimiento
-
-### 🎯 **Estados Dinámicos**
-- `pending` → `notified` automáticamente
-- Confirmación visual en tiempo real
-
-### 🛡️ **Tolerancia a Fallos**
-- Reintentos automáticos en RabbitMQ
-- Manejo de errores HTTP
-- Logs detallados para debugging
-
-¡El sistema está listo para producción en Railway! 🚀
+https://github.com/Valentinpico/Reto-2-DM
