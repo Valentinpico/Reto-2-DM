@@ -39,22 +39,18 @@ def connect_to_rabbitmq():
         # Declarar la cola (idempotente)
         channel.queue_declare(queue=QUEUE_NAME, durable=True)
         
-        logger.info(f"✅ Conectado a RabbitMQ exitosamente")
-        logger.info(f"📦 Cola '{QUEUE_NAME}' declarada")
+        logger.info(f"Conectado a RabbitMQ - Cola: {QUEUE_NAME}")
         return True
     except Exception as e:
-        logger.error(f"❌ Error conectando a RabbitMQ: {e}")
-        logger.error(f"📍 URL: {RABBITMQ_URL[:20]}...")  # Solo mostrar inicio por seguridad
+        logger.error(f"Error conectando a RabbitMQ: {e}")
         return False
 
 
 def publish_order_event(order_data: Dict[str, Any]):
     """🔧 Publicar evento con conexión dedicada (Thread-Safe)"""
     
-    # ✨ CREAR CONEXIÓN DEDICADA PARA CADA PUBLISH
+    # Crear conexión dedicada para cada publish (thread-safe)
     try:
-        logger.info(f"📡 [PUBLISH] Iniciando publicación para order: {order_data.get('order_id')}")
-        
         # Crear conexión específica para este mensaje
         parameters = pika.URLParameters(RABBITMQ_URL)
         
@@ -91,15 +87,14 @@ def publish_order_event(order_data: Dict[str, Any]):
             )
         )
         
-        # ✨ CERRAR CONEXIÓN INMEDIATAMENTE
+        # Cerrar conexión inmediatamente
         temp_connection.close()
         
-        logger.info(f"✅ [PUBLISH SUCCESS] Mensaje publicado exitosamente: {order_data.get('order_id')}")
+        logger.info(f"Mensaje publicado - Order: {order_data.get('order_id')}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ [PUBLISH ERROR] Error publicando mensaje: {e}")
-        logger.error(f"📍 Order ID: {order_data.get('order_id')}")
+        logger.error(f"Error publicando mensaje {order_data.get('order_id')}: {e}")
         return False
 
 

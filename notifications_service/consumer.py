@@ -34,30 +34,23 @@ def connect_to_rabbitmq():
     
     while retries < MAX_RETRIES:
         try:
-            logger.info(f"🔄 Intentando conectar a RabbitMQ... (intento {retries + 1}/{MAX_RETRIES})")
+            logger.info(f"Conectando a RabbitMQ... (intento {retries + 1}/{MAX_RETRIES})")
             
             # ✨ CONFIGURACIÓN ESPECÍFICA PARA RAILWAY PROXY
             is_railway = "railway.internal" in RABBITMQ_URL or "rlwy.net" in RABBITMQ_URL
             
+            # Configuración según ambiente
+            parameters = pika.URLParameters(RABBITMQ_URL)
+            
             if is_railway:
-                logger.info("🚂 Detectado Railway - usando configuración optimizada")
-                # Configuración especial para Railway
-                parameters = pika.URLParameters(RABBITMQ_URL)
-                parameters.heartbeat = 30  # Más conservador para proxy
-                parameters.blocked_connection_timeout = 120  # 2 minutos
+                # Railway: configuración conservadora para proxy
+                parameters.heartbeat = 30
+                parameters.blocked_connection_timeout = 120
                 parameters.connection_attempts = 5
                 parameters.retry_delay = 2
                 parameters.socket_timeout = 15
-                # Configuración TCP específica para Railway
-                parameters.tcp_options = {
-                    'TCP_NODELAY': 1,
-                    'TCP_KEEPIDLE': 60,
-                    'TCP_KEEPINTVL': 30,
-                    'TCP_KEEPCNT': 3
-                }
             else:
-                logger.info("🏠 Entorno local/otros - configuración estándar")
-                parameters = pika.URLParameters(RABBITMQ_URL)
+                # Local: configuración estándar
                 parameters.heartbeat = 60
                 parameters.blocked_connection_timeout = 600
                 parameters.connection_attempts = 3
@@ -68,13 +61,12 @@ def connect_to_rabbitmq():
             if RABBITMQ_URL.startswith('amqps://'):
                 context = ssl.create_default_context()
                 parameters.ssl_options = pika.SSLOptions(context)
-                logger.info("🔒 Usando conexión SSL (amqps)")
             
             # Crear conexión
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
             
-            # ✨ CONFIGURACIÓN DE COLA ROBUSTA
+            # Configuración de cola
             channel.queue_declare(
                 queue=QUEUE_NAME, 
                 durable=True,
@@ -82,31 +74,22 @@ def connect_to_rabbitmq():
                 auto_delete=False
             )
             
-            # ✨ QoS MUY ESTRICTO PARA EVITAR PÉRDIDAS
-            if is_railway:
-                # Railway: procesamiento secuencial estricto
-                channel.basic_qos(prefetch_count=1, global_qos=False)
-                logger.info("🚂 Railway QoS: prefetch=1 (estricto)")
-            else:
-                # Local: configuración normal
-                channel.basic_qos(prefetch_count=1, global_qos=True)
-                logger.info("🏠 Local QoS: prefetch=1 (normal)")
+            # QoS: procesar 1 mensaje a la vez
+            channel.basic_qos(prefetch_count=1, global_qos=False)
             
-            logger.info(f"✅ Conectado a RabbitMQ exitosamente")
-            logger.info(f"👂 Escuchando cola: '{QUEUE_NAME}'")
+            logger.info(f"Conectado a RabbitMQ - Cola: {QUEUE_NAME}")
             
             return connection, channel
             
         except Exception as e:
             retries += 1
-            logger.error(f"❌ Error conectando a RabbitMQ: {e}")
-            logger.error(f"📍 URL: {RABBITMQ_URL[:20]}...")  # Solo mostrar inicio de URL por seguridad
+            logger.error(f"Error conectando a RabbitMQ: {e}")
             
             if retries < MAX_RETRIES:
-                logger.info(f"⏳ Reintentando en {RETRY_DELAY} segundos...")
+                logger.info(f"Reintentando en {RETRY_DELAY} segundos...")
                 time.sleep(RETRY_DELAY)
             else:
-                logger.error("💀 Se alcanzó el máximo de reintentos")
+                logger.error("Maximo de reintentos alcanzado")
                 raise
 
 
