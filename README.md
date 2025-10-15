@@ -48,13 +48,13 @@ Dos microservicios independientes que se comunican mediante mensajería asíncro
 
 ```
 ┌─────────────────┐    RabbitMQ     ┌──────────────────────┐
-│  Orders Service │ ───────────────▶│ Notifications Service │
+│  Orders Service │ ───────────────▶│ Notifications Service│
 │   (Producer)    │   orders_queue  │     (Consumer)       │
 │                 │                 │                      │
 │ 1. Crear pedido │                 │ 3. Procesar mensaje  │
 │ 2. Publicar     │                 │ 4. Esperar 4s ⏰     │
 │    evento       │                 │ 5. Llamar API ───────┐
-│                 │ ◀───────────────│    PATCH /status    │
+│                 │ ◀───────────────│    PATCH /status     │
 │ 6. Actualizar   │  HTTP Request   │ 6. Confirmar ✅      │
 │    a "notified" │                 │                      │
 └─────────────────┘                 └──────────────────────┘

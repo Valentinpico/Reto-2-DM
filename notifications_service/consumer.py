@@ -22,9 +22,13 @@ QUEUE_NAME = "orders_queue"
 MAX_RETRIES = 10
 RETRY_DELAY = 5
 
+# ✨ CONTADORES PARA DEBUGGING
+message_counter = 0
+last_message_time = None
+
 
 def connect_to_rabbitmq():
-    """Conectar a RabbitMQ con reintentos y soporte SSL para CloudAMQP"""
+    """Conectar a RabbitMQ con configuración optimizada para producción"""
     retries = 0
     
     while retries < MAX_RETRIES:
@@ -34,24 +38,37 @@ def connect_to_rabbitmq():
             # Parsear URL
             parameters = pika.URLParameters(RABBITMQ_URL)
             
-            # Configuración para CloudAMQP
-            parameters.heartbeat = 30
-            parameters.blocked_connection_timeout = 300
+            # ✨ CONFIGURACIÓN OPTIMIZADA PARA PRODUCCIÓN
+            parameters.heartbeat = 60  # Aumentado para Railway
+            parameters.blocked_connection_timeout = 600  # 10 minutos
+            parameters.connection_attempts = 3
+            parameters.retry_delay = 1
+            parameters.socket_timeout = 10
             
             # Si la URL usa amqps://, configurar SSL
             if RABBITMQ_URL.startswith('amqps://'):
                 context = ssl.create_default_context()
-                # CloudAMQP usa certificados válidos, no necesitamos deshabilitarlos
                 parameters.ssl_options = pika.SSLOptions(context)
                 logger.info("🔒 Usando conexión SSL (amqps)")
             
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
             
-            channel.queue_declare(queue=QUEUE_NAME, durable=True)
+            # ✨ CONFIGURACIÓN MEJORADA DE COLA
+            # Declarar cola con persistencia
+            channel.queue_declare(
+                queue=QUEUE_NAME, 
+                durable=True,  # Cola persistente
+                exclusive=False,  # No exclusiva
+                auto_delete=False  # No auto-delete
+            )
+            
+            # ✨ CONFIGURACIÓN QoS OPTIMIZADA
+            # Procesar 1 mensaje a la vez y confirmar antes del siguiente
+            channel.basic_qos(prefetch_count=1, global_qos=True)
             
             logger.info(f"✅ Conectado a RabbitMQ exitosamente")
-            logger.info(f"👂 Escuchando cola: '{QUEUE_NAME}'")
+            logger.info(f"👂 Escuchando cola: '{QUEUE_NAME}' (QoS=1)")
             
             return connection, channel
             
@@ -107,90 +124,135 @@ def update_order_status(order_id: str, status: str = "notified") -> bool:
 
 def callback(ch, method, properties, body):
     """
-    Callback que se ejecuta cuando se recibe un mensaje de la cola
+    ✨ Callback mejorado que se ejecuta cuando se recibe un mensaje de la cola
     """
+    global message_counter, last_message_time
+    
+    delivery_tag = method.delivery_tag
+    start_time = time.time()
+    message_counter += 1
+    last_message_time = start_time
+    
     try:
+        # ✨ LOGGING INMEDIATO CON CONTADOR
+        logger.info(f"🔔 [MENSAJE #{message_counter}] Recibido - iniciando procesamiento...")
+        
         # Decodificar mensaje JSON
         message = json.loads(body.decode('utf-8'))
         
         order_id = message.get("order_id", "unknown")
-        customer_id = message.get("customer_id", "unknown")
+        customer_id = message.get("customer_id", "unknown") 
         total_amount = message.get("total_amount", 0)
         products = message.get("products", [])
         
-        # Log del mensaje recibido
-        logger.info("=" * 70)
-        logger.info("NUEVO PEDIDO RECIBIDO")
-        logger.info(f"Order ID:     {order_id}")
-        logger.info(f"Customer ID:  {customer_id}")
-        
-
-        logger.info(f"Productos:    {len(products)} item(s)")
+        # ✨ LOG MEJORADO CON TIMESTAMP
+        logger.info("=" * 80)
+        logger.info("🆕 NUEVO PEDIDO RECIBIDO")
+        logger.info(f"⏰ Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"🆔 Order ID:     {order_id}")
+        logger.info(f"👤 Customer ID:  {customer_id}")
+        logger.info(f"📦 Productos:    {len(products)} item(s)")
         for idx, product in enumerate(products, 1):
-            logger.info(f"   - {product}")
-
-        logger.info(f"TOTAL:        ${total_amount}")
-        logger.info("=" * 70)
+            logger.info(f"    {idx}. {product}")
+        logger.info(f"💰 TOTAL:        ${total_amount}")
+        logger.info("=" * 80)
         
         # ✨ FUNCIONALIDAD EXTRA: Actualizar estado del pedido
-        logger.info("🕐 Esperando 4 segundos antes de confirmar notificación...")
-        time.sleep(4)  # Dar tiempo para consultar el estado
+        logger.info("🕐 [DELAY] Esperando 1 segundo antes de confirmar notificación...")
+        time.sleep(1)  # Dar tiempo para consultar el estado
         
-        # Llamar API para actualizar estado
+        # ✨ LLAMADA API CON MEJOR LOGGING
+        logger.info("📞 [API CALL] Iniciando actualización de estado...")
         success = update_order_status(order_id)
         
         if success:
-            logger.info(f"✅ NOTIFICACIÓN CONFIRMADA - Pedido {order_id} actualizado a 'notified'")
+            logger.info("🎉 ✅ NOTIFICACIÓN CONFIRMADA - Estado actualizado exitosamente!")
+            logger.info(f"✨ Pedido {order_id} → Status: 'notified'")
         else:
-            logger.warning(f"⚠️  Notificación procesada pero no se pudo actualizar estado del pedido {order_id}")
+            logger.warning("⚠️  Notificación procesada pero no se pudo actualizar estado")
         
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-        logger.info("🔄 Mensaje procesado y confirmado (ACK)")
-        logger.info("=" * 70)
-        logger.info("")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decodificando JSON: {e}")
-        logger.error(f"Mensaje recibido: {body}")
 
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        ch.basic_ack(delivery_tag=delivery_tag)
+        processing_time = time.time() - start_time
+        logger.info(f"✅ [ACK] Mensaje confirmado (procesado en {processing_time:.2f}s)")
+        logger.info("🔄 [READY] Listo para siguiente mensaje")
+        logger.info("=" * 80)
+        logger.info("🔄 [READY] Listo para siguiente mensaje")
+        logger.info("=" * 80)
+
+    except json.JSONDecodeError as e:
+        processing_time = time.time() - start_time
+        logger.error("❌ [ERROR] Error decodificando JSON")
+        logger.error(f"📍 Detalle: {e}")
+        logger.error(f"📄 Mensaje recibido: {body}")
+        logger.error(f"⏱️  Tiempo transcurrido: {processing_time:.2f}s")
+        
+        # NACK sin requeue para mensajes malformados
+        ch.basic_nack(delivery_tag=delivery_tag, requeue=False)
+        logger.error("❌ [NACK] Mensaje descartado (malformado)")
+        logger.info("=" * 80)
         
     except Exception as e:
-        logger.error(f"Error procesando mensaje: {e}")
-
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        processing_time = time.time() - start_time
+        logger.error("💥 [ERROR] Error inesperado procesando mensaje")
+        logger.error(f"📍 Detalle: {e}")
+        logger.error(f"⏱️  Tiempo transcurrido: {processing_time:.2f}s")
+        
+        # NACK con requeue para otros errores
+        ch.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        logger.error("🔄 [NACK] Mensaje devuelto a la cola para reintento")
+        logger.info("=" * 80)
 
 
 def start_consumer():
-    """Iniciar el consumer de RabbitMQ"""
+    """✨ Iniciar el consumer de RabbitMQ con reconexión automática"""
     logger.info("🚀 Notifications Service iniciado")
     logger.info("⏳ Esperando mensajes de pedidos...")
     
+    connection = None
+    
+    while True:  # ✨ Loop infinito para reconexión automática
+        try:
+            logger.info("🔌 [CONNECT] Estableciendo conexión...")
+            connection, channel = connect_to_rabbitmq()
+            
+            # ✨ CONFIGURACIÓN CONSUMER OPTIMIZADA
+            logger.info("⚙️  [CONFIG] Configurando consumer...")
+            
+            # Comenzar a consumir mensajes
+            channel.basic_consume(
+                queue=QUEUE_NAME,
+                on_message_callback=callback,
+                auto_ack=False  # ✨ ACK manual para control total
+            )
+            
+            logger.info("🎯 [READY] Consumer activo - procesando mensajes...")
+            logger.info("🔥 [STATUS] Sistema listo para recibir pedidos")
+            logger.info("💡 [INFO] Presiona CTRL+C para detener")
+            logger.info("=" * 80)
+            
+            # ✨ CONSUMO CON MANEJO DE RECONEXIÓN
+            channel.start_consuming()
+            
+        except KeyboardInterrupt:
+            logger.info("")
+            logger.info("⏹️  [STOP] Consumer detenido por el usuario")
+            break
+            
+        except Exception as e:
+            logger.error(f"💥 [FATAL] Error en el consumer: {e}")
+            logger.error("🔄 [RECONNECT] Intentando reconectar en 10 segundos...")
+            time.sleep(10)
+            continue
+    
+    # ✨ CIERRE LIMPIO DE CONEXIÓN
     try:
-        connection, channel = connect_to_rabbitmq()
-        
-        # Configurar prefetch para procesar un mensaje a la vez
-        channel.basic_qos(prefetch_count=1)
-        
-        # Comenzar a consumir mensajes
-        channel.basic_consume(
-            queue=QUEUE_NAME,
-            on_message_callback=callback,
-            auto_ack=False  # ACK manual
-        )
-        
-        logger.info("Consumer listo. Presiona CTRL+C para detener.")
-        channel.start_consuming()
-        
-    except KeyboardInterrupt:
-        logger.info("Consumer detenido por el usuario")
         if connection and not connection.is_closed:
+            logger.info("🔌 [DISCONNECT] Cerrando conexión...")
             connection.close()
-        logger.info("Notifications Service finalizado")
-
-    except Exception as e:
-        logger.error(f"Error fatal en el consumer: {e}")
-        raise
+        logger.info("👋 [EXIT] Notifications Service finalizado")
+    except:
+        logger.info("👋 [EXIT] Notifications Service finalizado (forzado)")
 
 
 if __name__ == "__main__":
