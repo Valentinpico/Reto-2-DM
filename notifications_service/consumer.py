@@ -4,6 +4,8 @@ import pika
 import ssl
 import time
 import logging
+import requests
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,6 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+ORDERS_API_URL = os.getenv("ORDERS_API_URL", "http://orders_service:8000")
 QUEUE_NAME = "orders_queue"
 MAX_RETRIES = 10
 RETRY_DELAY = 5
@@ -65,6 +68,43 @@ def connect_to_rabbitmq():
                 raise
 
 
+def update_order_status(order_id: str, status: str = "notified") -> bool:
+    """
+    🔔 Llamar a Orders API para actualizar el estado del pedido
+    
+    Args:
+        order_id: ID del pedido a actualizar
+        status: Nuevo estado (default: "notified")
+        
+    Returns:
+        bool: True si se actualizó exitosamente, False en caso contrario
+    """
+    try:
+        url = f"{ORDERS_API_URL}/api/orders/{order_id}/status"
+        params = {"new_status": status}
+        
+        logger.info(f"📡 Actualizando estado del pedido {order_id} a '{status}'...")
+        
+        response = requests.patch(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info(f"✅ API Response: Estado actualizado exitosamente")
+            return True
+        else:
+            logger.error(f"❌ Error en API: {response.status_code} - {response.text}")
+            return False
+            
+    except requests.exceptions.ConnectionError:
+        logger.error(f"❌ No se pudo conectar a Orders API en {ORDERS_API_URL}")
+        return False
+    except requests.exceptions.Timeout:
+        logger.error(f"❌ Timeout conectando a Orders API")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error inesperado llamando API: {e}")
+        return False
+
+
 def callback(ch, method, properties, body):
     """
     Callback que se ejecuta cuando se recibe un mensaje de la cola
@@ -92,10 +132,22 @@ def callback(ch, method, properties, body):
         logger.info(f"TOTAL:        ${total_amount}")
         logger.info("=" * 70)
         
+        # ✨ FUNCIONALIDAD EXTRA: Actualizar estado del pedido
+        logger.info("🕐 Esperando 4 segundos antes de confirmar notificación...")
+        time.sleep(4)  # Dar tiempo para consultar el estado
+        
+        # Llamar API para actualizar estado
+        success = update_order_status(order_id)
+        
+        if success:
+            logger.info(f"✅ NOTIFICACIÓN CONFIRMADA - Pedido {order_id} actualizado a 'notified'")
+        else:
+            logger.warning(f"⚠️  Notificación procesada pero no se pudo actualizar estado del pedido {order_id}")
+        
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        logger.info("Mensaje procesado y confirmado (ACK)")
-        logger.info(" " * 70)
-        logger.info(" " * 70)
+        logger.info("🔄 Mensaje procesado y confirmado (ACK)")
+        logger.info("=" * 70)
+        logger.info("")
         
     except json.JSONDecodeError as e:
         logger.error(f"Error decodificando JSON: {e}")

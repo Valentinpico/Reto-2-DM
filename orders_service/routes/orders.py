@@ -181,3 +181,83 @@ async def create_order(order: OrderCreate) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error creando pedido: {e}")
         raise InternalServerException(f"Error al crear el pedido: {str(e)}")
+
+
+@router.patch(
+    "/{order_id}/status",
+    response_model=OrderResponseModel,
+    responses={
+        200: {
+            "description": "Estado del pedido actualizado exitosamente",
+            "model": OrderResponseModel
+        },
+        400: {
+            "description": "ID de pedido inválido",
+            "model": ErrorResponseModel
+        },
+        404: {
+            "description": "Pedido no encontrado",
+            "model": ErrorResponseModel
+        }
+    }
+)
+async def update_order_status(order_id: str, new_status: str = "notified") -> Dict[str, Any]:
+    """
+    🔔 Actualizar estado del pedido (usado por notifications service)
+    
+    **Estados disponibles:**
+    - `pending`: Pedido creado, esperando procesamiento
+    - `notified`: Notificación enviada y confirmada ✅
+    - `processing`: En procesamiento
+    - `completed`: Completado
+    - `cancelled`: Cancelado
+    """
+    db = get_database()
+    
+    if not ObjectId.is_valid(order_id):
+        logger.warning(f"ID de pedido inválido: {order_id}")
+        raise BadRequestException("ID de pedido inválido")
+    
+    try:
+        # Verificar que el pedido existe
+        existing_order = await db.orders.find_one({"_id": ObjectId(order_id)})
+        
+        if not existing_order:
+            logger.warning(f"Pedido no encontrado para actualizar: {order_id}")
+            raise NotFoundException("Pedido", order_id)
+        
+        # Actualizar el estado
+        update_data = {
+            "status": new_status,
+            "updated_at": datetime.now()
+        }
+        
+        result = await db.orders.update_one(
+            {"_id": ObjectId(order_id)},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 0:
+            logger.warning(f"No se pudo actualizar el pedido: {order_id}")
+            raise InternalServerException("No se pudo actualizar el estado del pedido")
+        
+        # Obtener el pedido actualizado
+        updated_order = await db.orders.find_one({"_id": ObjectId(order_id)})
+        updated_order["_id"] = str(updated_order["_id"])
+        if "created_at" in updated_order:
+            updated_order["created_at"] = updated_order["created_at"].isoformat()
+        if "updated_at" in updated_order:
+            updated_order["updated_at"] = updated_order["updated_at"].isoformat()
+        
+        logger.info(f"🔔 Estado del pedido {order_id} actualizado a '{new_status}'")
+        
+        return success_response(
+            data=updated_order,
+            message=f"Estado actualizado a '{new_status}' exitosamente"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error actualizando estado del pedido {order_id}: {e}")
+        raise InternalServerException("Error al actualizar el estado del pedido")
