@@ -49,43 +49,57 @@ def connect_to_rabbitmq():
 
 
 def publish_order_event(order_data: Dict[str, Any]):
-    """Publicar evento de orden creada a RabbitMQ"""
-    global channel
+    """🔧 Publicar evento con conexión dedicada (Thread-Safe)"""
     
+    # ✨ CREAR CONEXIÓN DEDICADA PARA CADA PUBLISH
     try:
+        logger.info(f"📡 [PUBLISH] Iniciando publicación para order: {order_data.get('order_id')}")
+        
+        # Crear conexión específica para este mensaje
+        parameters = pika.URLParameters(RABBITMQ_URL)
+        
+        # Configuración optimizada para Railway
+        if "railway.internal" in RABBITMQ_URL or "rlwy.net" in RABBITMQ_URL:
+            parameters.heartbeat = 30
+            parameters.blocked_connection_timeout = 120
+            parameters.socket_timeout = 15
+        else:
+            parameters.heartbeat = 60
+            parameters.blocked_connection_timeout = 300
+            
+        # SSL si es necesario
+        if RABBITMQ_URL.startswith('amqps://'):
+            context = ssl.create_default_context()
+            parameters.ssl_options = pika.SSLOptions(context)
+        
+        # Crear conexión temporal
+        temp_connection = pika.BlockingConnection(parameters)
+        temp_channel = temp_connection.channel()
+        
+        # Asegurar que la cola existe
+        temp_channel.queue_declare(queue=QUEUE_NAME, durable=True)
+        
+        # Publicar mensaje
         message = json.dumps(order_data)
-
-        channel.basic_publish(
+        temp_channel.basic_publish(
             exchange='',
             routing_key=QUEUE_NAME,
             body=message,
             properties=pika.BasicProperties(
-                delivery_mode=2,
+                delivery_mode=2,  # Persistente
                 content_type='application/json'
             )
         )
         
-        logger.info(f"📤 Mensaje publicado a cola '{QUEUE_NAME}': {order_data.get('order_id')}")
+        # ✨ CERRAR CONEXIÓN INMEDIATAMENTE
+        temp_connection.close()
+        
+        logger.info(f"✅ [PUBLISH SUCCESS] Mensaje publicado exitosamente: {order_data.get('order_id')}")
         return True
+        
     except Exception as e:
-        logger.error(f"Error publicando mensaje: {e}")
-        if connect_to_rabbitmq():
-            try:
-                message = json.dumps(order_data)
-                channel.basic_publish(
-                    exchange='',
-                    routing_key=QUEUE_NAME,
-                    body=message,
-                    properties=pika.BasicProperties(
-                        delivery_mode=2,
-                        content_type='application/json'
-                    )
-                )
-                logger.info(f"📤 Mensaje publicado después de reconexión: {order_data.get('order_id')}")
-                return True
-            except Exception as retry_error:
-                logger.error(f"Error en reintento de publicación: {retry_error}")
-                return False
+        logger.error(f"❌ [PUBLISH ERROR] Error publicando mensaje: {e}")
+        logger.error(f"📍 Order ID: {order_data.get('order_id')}")
         return False
 
 
