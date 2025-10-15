@@ -1,0 +1,215 @@
+{
+  "info": {
+    "_postman_id": "orders-service-collection",
+    "name": "Orders Service API - Microservicios con RabbitMQ",
+    "description": "Colección de endpoints para el sistema de pedidos con microservicios desacoplados.\n\nArquitectura:\n- Orders Service (API REST)\n- Notifications Service (Consumer)\n- RabbitMQ (Message Broker)\n- MongoDB (Database)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "Health Check Básico",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Verifica que el servicio esté funcionando correctamente"
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check Detallado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica el estado del servicio y sus dependencias (MongoDB, RabbitMQ)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Crear Pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Guardar el orderId en variables de entorno",
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.success && jsonData.data._id) {",
+                  "        pm.environment.set('orderId', jsonData.data._id);",
+                  "        console.log(' Order ID guardado:', jsonData.data._id);",
+                  "    }",
+                  "}",
+                  "",
+                  "// Test de respuesta exitosa",
+                  "pm.test('Status code es 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Respuesta contiene success=true', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test('Pedido tiene _id', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('_id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"customer_123\",\n  \"products\": [\"Laptop Dell XPS 15\", \"Mouse Logitech MX Master\", \"Teclado mecánico\"],\n  \"total_amount\": 1499.97\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ""]
+            },
+            "description": "Crea un nuevo pedido en el sistema.\n\n**Flujo:**\n1. Guarda el pedido en MongoDB\n2. Publica evento a RabbitMQ\n3. Notifications Service procesa la notificación\n\n**Script:** Guarda automáticamente el orderId en las variables de entorno."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Todos los Pedidos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ""]
+            },
+            "description": "Obtiene la lista de todos los pedidos ordenados por fecha de creación (más recientes primero)"
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener Pedido por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}"]
+            },
+            "description": "Obtiene los detalles de un pedido específico por su ID.\n\n**Nota:** El orderId se obtiene automáticamente al crear un pedido."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ejemplos de Productos",
+      "item": [
+        {
+          "name": "Pedido - Productos Electrónicos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"customer_456\",\n  \"products\": [\"iPhone 15 Pro Max\", \"AirPods Pro\", \"Cargador USB-C 20W\"],\n  \"total_amount\": 1487.98\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pedido - Libros",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"customer_789\",\n  \"products\": [\"Clean Code - Robert Martin\", \"Design Patterns - Gang of Four\", \"The Pragmatic Programmer\"],\n  \"total_amount\": 137.97\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pedido - Ropa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"customer_321\",\n  \"products\": [\"Camiseta Nike Dri-FIT\", \"Pantalón Deportivo Adidas\", \"Zapatillas Running\"],\n  \"total_amount\": 319.94\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
