@@ -5,8 +5,6 @@ import pika.exceptions
 import ssl
 import time
 import logging
-import requests
-import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +16,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
-ORDERS_API_URL = os.getenv("ORDERS_API_URL", "http://orders_service:8000")
 QUEUE_NAME = "orders_queue"
 MAX_RETRIES = 10
 RETRY_DELAY = 5
@@ -93,25 +90,6 @@ def connect_to_rabbitmq():
                 raise
 
 
-def update_order_status(order_id: str, status: str = "notified") -> bool:
-    """Actualizar estado del pedido via API"""
-    try:
-        url = f"{ORDERS_API_URL}/api/orders/{order_id}/status"
-        params = {"new_status": status}
-        
-        response = requests.patch(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            return True
-        else:
-            logger.error(f"Error actualizando pedido {order_id}: {response.status_code}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error conectando a Orders API: {e}")
-        return False
-
-
 def callback(ch, method, properties, body):
     """
     ✨ Callback mejorado que se ejecuta cuando se recibe un mensaje de la cola
@@ -137,18 +115,11 @@ def callback(ch, method, properties, body):
         logger.info(f"Nuevo pedido recibido - ID: {order_id}")
         logger.info(f"Cliente: {customer_id} | Productos: {products_list} | Total: ${total_amount}")
         
-        # Esperar antes de confirmar
+        # Simular procesamiento
         time.sleep(1)
         
-        # Actualizar estado
-        success = update_order_status(order_id)
+        logger.info(f"Notificacion procesada - Pedido {order_id}")
         
-        if success:
-            logger.info(f"Notificacion enviada - Pedido {order_id} confirmado")
-        else:
-            logger.warning(f"Pedido {order_id} procesado pero no se pudo confirmar estado")
-        
-
         # Confirmar mensaje
         ch.basic_ack(delivery_tag=delivery_tag)
         logger.info(f"Mensaje #{message_counter} procesado correctamente")
