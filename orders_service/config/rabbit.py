@@ -1,6 +1,7 @@
 import os
 import json
 import pika
+import ssl
 from dotenv import load_dotenv
 import logging
 from typing import Dict, Any
@@ -17,21 +18,33 @@ channel = None
 
 
 def connect_to_rabbitmq():
-    """Conectar a RabbitMQ y declarar la cola"""
+    """Conectar a RabbitMQ y declarar la cola con soporte SSL para CloudAMQP"""
     global connection, channel
     try:
         parameters = pika.URLParameters(RABBITMQ_URL)
+        
+        # Configuración para CloudAMQP
+        parameters.heartbeat = 30
+        parameters.blocked_connection_timeout = 300
+        
+        # Si la URL usa amqps://, configurar SSL
+        if RABBITMQ_URL.startswith('amqps://'):
+            context = ssl.create_default_context()
+            parameters.ssl_options = pika.SSLOptions(context)
+            logger.info("🔒 Usando conexión SSL (amqps)")
+        
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
         
         # Declarar la cola (idempotente)
         channel.queue_declare(queue=QUEUE_NAME, durable=True)
         
-        logger.info(f"Conectado a RabbitMQ: {RABBITMQ_URL}")
-        logger.info(f"Cola '{QUEUE_NAME}' declarada")
+        logger.info(f"✅ Conectado a RabbitMQ exitosamente")
+        logger.info(f"📦 Cola '{QUEUE_NAME}' declarada")
         return True
     except Exception as e:
-        logger.error(f"Error conectando a RabbitMQ: {e}")
+        logger.error(f"❌ Error conectando a RabbitMQ: {e}")
+        logger.error(f"📍 URL: {RABBITMQ_URL[:20]}...")  # Solo mostrar inicio por seguridad
         return False
 
 

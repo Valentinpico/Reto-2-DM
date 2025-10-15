@@ -1,6 +1,7 @@
 import os
 import json
 import pika
+import ssl
 import time
 import logging
 from dotenv import load_dotenv
@@ -20,32 +21,47 @@ RETRY_DELAY = 5
 
 
 def connect_to_rabbitmq():
-    """Conectar a RabbitMQ con reintentos"""
+    """Conectar a RabbitMQ con reintentos y soporte SSL para CloudAMQP"""
     retries = 0
     
     while retries < MAX_RETRIES:
         try:
             logger.info(f"🔄 Intentando conectar a RabbitMQ... (intento {retries + 1}/{MAX_RETRIES})")
+            
+            # Parsear URL
             parameters = pika.URLParameters(RABBITMQ_URL)
+            
+            # Configuración para CloudAMQP
+            parameters.heartbeat = 30
+            parameters.blocked_connection_timeout = 300
+            
+            # Si la URL usa amqps://, configurar SSL
+            if RABBITMQ_URL.startswith('amqps://'):
+                context = ssl.create_default_context()
+                # CloudAMQP usa certificados válidos, no necesitamos deshabilitarlos
+                parameters.ssl_options = pika.SSLOptions(context)
+                logger.info("🔒 Usando conexión SSL (amqps)")
+            
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
             
             channel.queue_declare(queue=QUEUE_NAME, durable=True)
             
-            logger.info(f"Conectado a RabbitMQ: {RABBITMQ_URL}")
-            logger.info(f"Escuchando cola: '{QUEUE_NAME}'")
+            logger.info(f"✅ Conectado a RabbitMQ exitosamente")
+            logger.info(f"👂 Escuchando cola: '{QUEUE_NAME}'")
             
             return connection, channel
             
         except Exception as e:
             retries += 1
-            logger.error(f"Error conectando a RabbitMQ: {e}")
+            logger.error(f"❌ Error conectando a RabbitMQ: {e}")
+            logger.error(f"📍 URL: {RABBITMQ_URL[:20]}...")  # Solo mostrar inicio de URL por seguridad
             
             if retries < MAX_RETRIES:
-                logger.info(f"Reintentando en {RETRY_DELAY} segundos...")
+                logger.info(f"⏳ Reintentando en {RETRY_DELAY} segundos...")
                 time.sleep(RETRY_DELAY)
             else:
-                logger.error("Se alcanzó el máximo de reintentos. No se pudo conectar a RabbitMQ.")
+                logger.error("💀 Se alcanzó el máximo de reintentos")
                 raise
 
 

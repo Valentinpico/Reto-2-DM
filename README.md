@@ -548,6 +548,21 @@ curl -X POST http://localhost:8001/api/orders/ \
 docker-compose logs --tail=20 notifications_service
 ```
 
+**Output esperado:**
+```
+notifications_service  | 2025-10-15 00:40:44,028 - __main__ - INFO - ======================================================================
+notifications_service  | 2025-10-15 00:40:44,028 - __main__ - INFO - NUEVO PEDIDO RECIBIDO
+notifications_service  | 2025-10-15 00:40:44,028 - __main__ - INFO - Order ID:     68eeed8c6c16d26f6953ab6f
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO - Customer ID:  Valentin_Final_Test
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO - Productos:    3 item(s)
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO -    - MacBook Pro 16
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO -    - Magic Mouse
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO -    - Magic Keyboard
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO - TOTAL:        $3499.99
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO - ======================================================================
+notifications_service  | 2025-10-15 00:40:44,029 - __main__ - INFO - Mensaje procesado y confirmado (ACK)
+```
+
 ### Detener Todo
 ```bash
 # Docker
