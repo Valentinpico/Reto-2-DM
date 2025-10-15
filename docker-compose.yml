@@ -1,13 +1,11 @@
 services:
-  # RabbitMQ - Message Broker (OPCIONAL - Solo con profile "docker-rabbit")
+  # RabbitMQ - Message Broker (se levanta automáticamente en local)
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: orders_rabbitmq
-    profiles:
-      - docker-rabbit
     ports:
       - "5672:5672"    # Puerto AMQP
-      - "15672:15672"  # Management UI
+      - "15672:15672"  # Management UI (http://localhost:15672 user: guest, pass: guest)
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -26,7 +24,7 @@ services:
     image: mongo:7.0
     container_name: orders_mongodb
     ports:
-      - "27018:27017"  # Usando puerto 27018 para evitar conflicto con MongoDB local
+      - "27018:27017"
     environment:
       MONGO_INITDB_DATABASE: ordersdb
     healthcheck:
@@ -39,7 +37,7 @@ services:
     volumes:
       - mongodb_data:/data/db
 
-  # Orders Service - API REST (usa RabbitMQ local por defecto)
+  # Orders Service - API REST
   orders_service:
     build: ./orders_service
     container_name: orders_service
@@ -47,31 +45,28 @@ services:
       - "8001:8000"
     environment:
       MONGODB_URL: mongodb://mongodb:27017/ordersdb
-      # Por defecto usa RabbitMQ local (host.docker.internal)
-      # Para usar RabbitMQ en Docker, ejecuta con profile "docker-rabbit"
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       mongodb:
         condition: service_healthy
     networks:
       - orders_network
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # Notifications Service - Consumer (usa RabbitMQ local por defecto)
+  # Notifications Service - Consumer
   notifications_service:
     build: ./notifications_service
     container_name: notifications_service
     environment:
-      # Por defecto usa RabbitMQ local (host.docker.internal)
-      # Para usar RabbitMQ en Docker, ejecuta con profile "docker-rabbit"
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     networks:
       - orders_network
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
 volumes:
   mongodb_data:

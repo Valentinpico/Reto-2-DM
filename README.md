@@ -75,7 +75,7 @@ RabbitMQ → Notifications Service → Procesar notificación
 
 ## Instalación y Uso
 
-### Desarrollo Local
+### Desarrollo Local con Docker Compose
 
 1. Clonar el repositorio
 ```bash
@@ -83,21 +83,26 @@ git clone <repo-url>
 cd Reto-2
 ```
 
-2. Instalar RabbitMQ local (Homebrew en Mac)
-```bash
-brew install rabbitmq
-brew services start rabbitmq
-```
-
-3. Configurar variables de entorno en `.env`
-```bash
-RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672/
-ORDERS_API_URL=http://orders_service:8000
-```
-
-4. Levantar servicios con Docker Compose
+2. Levantar todos los servicios (incluye RabbitMQ automáticamente)
 ```bash
 docker-compose up -d
+```
+
+Esto levantará:
+- ✅ RabbitMQ (puerto 5672 para AMQP, 15672 para UI)
+- ✅ MongoDB (puerto 27018)
+- ✅ Orders Service (puerto 8001)
+- ✅ Notifications Service (consumer en background)
+
+3. Verificar que todo esté funcionando
+```bash
+docker-compose ps
+docker-compose logs -f notifications_service
+```
+
+4. Acceder a las interfaces
+- API: http://localhost:8001/docs
+- RabbitMQ Management: http://localhost:15672 (usuario: guest, contraseña: guest)
 ```
 
 5. Probar la API
@@ -111,18 +116,14 @@ curl -X POST "http://localhost:8001/api/orders/" \
     "total_amount": 150.00
   }'
 
-# Ver los logs del notifications service
+# Ver los logs del notifications service en tiempo real
 docker-compose logs -f notifications_service
 ```
 
-## 🛠️ STACK TECNOLÓGICO COMÚN
-
-- **FastAPI** (solo orders service)
-- **MongoDB** (solo orders service) 
-- **RabbitMQ** (ambos servicios)
-- **Pika** para RabbitMQ + **Requests** para HTTP
-- **Docker + Docker Compose**
-- **Railway** (despliegue en nube)
+6. Detener servicios
+```bash
+docker-compose down
+```
 
 ## ✨ REQUISITOS FUNCIONALES
 
